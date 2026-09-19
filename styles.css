@@ -1,0 +1,1 @@
+html,body,#root{margin:0;min-height:100%;background:#F7F5F0}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent}button,select,input,textarea{font-size:16px}@media (display-mode:standalone){body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}}
