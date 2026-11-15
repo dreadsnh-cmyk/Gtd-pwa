@@ -1,1 +1,88 @@
 html,body,#root{margin:0;min-height:100%;background:#F7F5F0}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent}button,select,input,textarea{font-size:16px}@media (display-mode:standalone){body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}}
+
+.task-follow-up {
+  margin-top: 10px;
+  color: #333044;
+  font: 13px/1.45 system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+.task-follow-up summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.task-follow-up ol {
+  padding-left: 20px;
+  margin-block: 8px;
+}
+.task-follow-up li {
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+}
+.task-follow-up time {
+  display: block;
+  color: #655d50;
+  font-size: 12px;
+}
+.task-follow-up textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-block: 4px 6px;
+  padding: 6px;
+  font: inherit;
+}
+.task-follow-up button {
+  padding: 7px 10px;
+  background: #1a1a2e;
+  color: white;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.focus-intervals {
+  max-width: 480px;
+  margin: auto;
+  color: #1a1a2e;
+  font: 14px/1.5 system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+.focus-intervals h2 { margin: 0 0 12px; font-size: 22px; }
+.focus-intervals h3 { margin: 0 0 8px; font-size: 16px; }
+.focus-card {
+  margin-bottom: 12px;
+  padding: 16px;
+  background: white;
+  border: 1px solid #e0d8c8;
+  border-radius: 10px;
+}
+.focus-card label, .focus-linked-task span { display: block; margin-bottom: 8px; }
+.focus-card input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 9px;
+  border: 1px solid #b4ab9d;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 16px;
+}
+.focus-card button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #1f6f5c;
+  border-radius: 8px;
+  background: #1f6f5c;
+  color: white;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.focus-card .focus-secondary { background: white; border-color: #b4ab9d; color: #1a1a2e; }
+.focus-linked-task { margin-bottom: 12px; }
+.focus-clock { text-align: center; font-size: 54px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.focus-hint { color: #5e594f; font-size: 13px; }
+.focus-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.focus-stats strong { display: block; font-size: 20px; }
+.focus-log { padding: 8px 0; border-top: 1px solid #e0d8c8; }

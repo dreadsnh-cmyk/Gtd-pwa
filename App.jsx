@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import FocusIntervals, { mmss } from "./FocusIntervals.jsx";
 
 const CONTEXTS = ["📥 Inbox", "🏠 Maison", "💼 Travail BTP", "📞 Appels", "🛒 Courses", "🌴 Guadeloupe", "📚 Lecture"];
 const STATUSES = ["À traiter", "En cours", "Délégué", "Terminé"];
@@ -9,8 +10,6 @@ const STATUS_COLORS = {
   "Terminé":   { bg: "#D4EDDA", text: "#155724", dot: "#28A745" },
 };
 const STORAGE_KEY = "gtd_tasks_norbert";
-const POMODORO_DURATION = 25 * 60;
-const SHORT_BREAK = 5 * 60;
 
 function loadTasks() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
@@ -28,56 +27,15 @@ export default function GTDApp() {
   const [editText, setEditText] = useState("");
   const [search, setSearch] = useState("");
 
-  // Focus / Pomodoro state
-  const [focusTask, setFocusTask] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(POMODORO_DURATION);
-  const [running, setRunning] = useState(false);
-  const [isBreak, setIsBreak] = useState(false);
-  const [sessions, setSessions] = useState(0);
-  const [customMinutes, setCustomMinutes] = useState(25);
-  const intervalRef = useRef(null);
+  const [focusTaskId, setFocusTaskId] = useState(null);
+  const focusTask = tasks.find(task => task.id === focusTaskId);
   const inputRef = useRef();
 
   useEffect(() => { saveTasks(tasks); }, [tasks]);
 
-  useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(t => {
-          if (t <= 1) {
-            clearInterval(intervalRef.current);
-            setRunning(false);
-            if (!isBreak) {
-              setSessions(s => s + 1);
-              setIsBreak(true);
-              setTimeLeft(SHORT_BREAK);
-            } else {
-              setIsBreak(false);
-              setTimeLeft(customMinutes * 60);
-            }
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(intervalRef.current);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [running, isBreak, customMinutes]);
-
   const startFocus = (task) => {
-    setFocusTask(task);
-    setTimeLeft(customMinutes * 60);
-    setRunning(false);
-    setIsBreak(false);
+    setFocusTaskId(task.id);
     setTab("focus");
-  };
-
-  const resetTimer = () => {
-    setRunning(false);
-    setIsBreak(false);
-    setTimeLeft(customMinutes * 60);
   };
 
   const addTask = () => {
@@ -88,9 +46,55 @@ export default function GTDApp() {
     inputRef.current?.focus();
   };
 
-  const updateStatus = (id, status) => setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+  const updateStatus = (id, status) => {
+    const at = new Date().toISOString();
+    setTasks(prev => prev.map(task => {
+      if (task.id !== id || task.status === status) return task;
+      return {
+        ...task,
+        status,
+        history: [...(task.history ?? []), { at, kind: "status", text: `${task.status} → ${status}` }],
+      };
+    }));
+  };
+
+  const addFocusToHistory = (interval) => {
+    if (interval.taskId == null) return;
+    const entry = {
+      at: new Date().toISOString(),
+      kind: "focus",
+      text: `${interval.held ? "Intervalle tenu" : "Intervalle arrêté"} · ${mmss(interval.sec)} / ${interval.target} min`,
+      details: interval.urges.map((second, index) =>
+        `Envie à ${mmss(second)}${interval.notes[index] ? ` · ${interval.notes[index]}` : ""}`),
+    };
+    setTasks(previous => previous.map(task => task.id === interval.taskId
+      ? { ...task, history: [...(task.history ?? []), entry] }
+      : task));
+  };
+
+  const addFollowUp = (id, event) => {
+    event.preventDefault();
+    const text = new FormData(event.currentTarget).get("followUp").trim();
+    if (!text) return;
+    const entry = { at: new Date().toISOString(), kind: "note", text };
+    setTasks(prev => prev.map(task => task.id === id
+      ? { ...task, history: [...(task.history ?? []), entry] }
+      : task));
+    event.currentTarget.reset();
+  };
   const deleteTask = (id) => setTasks(prev => prev.filter(t => t.id !== id));
-  const saveEdit = (id) => { setTasks(prev => prev.map(t => t.id === id ? { ...t, text: editText } : t)); setEditId(null); };
+  const saveEdit = (id) => {
+    const at = new Date().toISOString();
+    setTasks(prev => prev.map(task => {
+      if (task.id !== id || task.text === editText) return task;
+      return {
+        ...task,
+        text: editText,
+        history: [...(task.history ?? []), { at, kind: "edit", text: editText, previous: task.text }],
+      };
+    }));
+    setEditId(null);
+  };
 
   const filtered = tasks.filter(t => {
     const matchStatus = filter === "Tous" || t.status === filter;
@@ -100,13 +104,6 @@ export default function GTDApp() {
   });
 
   const counts = STATUSES.reduce((acc, s) => { acc[s] = tasks.filter(t => t.status === s).length; return acc; }, {});
-
-  const mins = String(Math.floor(timeLeft / 60)).padStart(2, "0");
-  const secs = String(timeLeft % 60).padStart(2, "0");
-  const progress = isBreak
-    ? 1 - timeLeft / SHORT_BREAK
-    : 1 - timeLeft / (customMinutes * 60);
-  const circumference = 2 * Math.PI * 80;
 
   return (
     <div style={{ minHeight: "100vh", background: "#F7F5F0", fontFamily: "'Georgia', serif", padding: 0 }}>
@@ -205,7 +202,7 @@ export default function GTDApp() {
                 const isEdit = editId === task.id;
                 return (
                   <div key={task.id} style={{ background: "#fff", border: "1px solid #E0D8C8", borderLeft: `4px solid ${sc.dot}`, borderRadius: 8, padding: "12px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       {isEdit ? (
                         <textarea value={editText} onChange={e => setEditText(e.target.value)} autoFocus rows={2}
                           style={{ width: "100%", border: "1px solid #C9A84C", borderRadius: 4, padding: "4px 8px", fontSize: 14, fontFamily: "Georgia, serif", resize: "none", outline: "none", boxSizing: "border-box" }} />
@@ -220,6 +217,32 @@ export default function GTDApp() {
                           {STATUSES.map(s => <option key={s}>{s}</option>)}
                         </select>
                       </div>
+                      <details className="task-follow-up">
+                        <summary>Suivi ({task.history?.length ?? 0})</summary>
+                        <ol>
+                          <li><strong>Capture</strong> · {task.createdAt}</li>
+                          {task.note && <li>{task.note}</li>}
+                          {task.history?.map((entry, index) => (
+                            <li key={index}>
+                              <time dateTime={entry.at}>{new Date(entry.at).toLocaleString("fr-FR", {
+                                dateStyle: "short",
+                                timeStyle: "short",
+                              })}</time>
+                              <strong>{ { status: "Statut", edit: "Modification", note: "Note", focus: "Focus" }[entry.kind] }</strong>
+                              {entry.kind === "edit" && <div>Avant · {entry.previous}</div>}
+                              <div>{entry.text}</div>
+                              {entry.details?.map((detail, index) => <div key={index}>{detail}</div>)}
+                            </li>
+                          ))}
+                        </ol>
+                        <form onSubmit={event => addFollowUp(task.id, event)}>
+                          <label>
+                            Ajouter une précision ou une avancée
+                            <textarea name="followUp" rows={2} required />
+                          </label>
+                          <button type="submit">Ajouter au suivi</button>
+                        </form>
+                      </details>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {isEdit ? (
@@ -248,114 +271,18 @@ export default function GTDApp() {
           </>
         )}
 
-        {/* ===== FOCUS TAB ===== */}
-        {tab === "focus" && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-
-            {/* Task selector */}
-            <div style={{ width: "100%", marginBottom: 24 }}>
-              <p style={{ fontSize: 11, letterSpacing: 2, color: "#9A9080", fontFamily: "sans-serif", textTransform: "uppercase", marginBottom: 8 }}>
-                🎯 Tâche en cours
-              </p>
-              {focusTask ? (
-                <div style={{ background: "#1A1A2E", borderRadius: 10, padding: "14px 16px", borderLeft: "4px solid #E74C3C" }}>
-                  <p style={{ margin: "0 0 6px", fontSize: 15, color: "#F0EAD6", lineHeight: 1.5 }}>{focusTask.text}</p>
-                  <span style={{ fontSize: 11, color: "#9A9080", fontFamily: "sans-serif", background: "#0F1520", padding: "2px 8px", borderRadius: 10 }}>{focusTask.context}</span>
-                  <button onClick={() => { setFocusTask(null); resetTimer(); }} style={{ float: "right", background: "transparent", border: "none", color: "#6A6058", cursor: "pointer", fontSize: 12, fontFamily: "sans-serif" }}>Changer</button>
-                </div>
-              ) : (
-                <div style={{ background: "#fff", borderRadius: 10, padding: "14px", border: "2px dashed #D0C8B0", textAlign: "center" }}>
-                  <p style={{ margin: 0, color: "#9A9080", fontFamily: "sans-serif", fontSize: 13 }}>
-                    Sélectionne une tâche depuis l'onglet Capture 🔥
-                  </p>
-                  <button onClick={() => setTab("capture")} style={{ marginTop: 10, background: "#1A1A2E", color: "#C9A84C", border: "none", borderRadius: 6, padding: "8px 18px", fontSize: 12, fontFamily: "sans-serif", cursor: "pointer" }}>
-                    → Aller à la liste
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Duration selector */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap", justifyContent: "center" }}>
-              {[15, 25, 45, 60].map(m => (
-                <button key={m} onClick={() => { setCustomMinutes(m); if (!running) setTimeLeft(m * 60); }} style={{
-                  background: customMinutes === m ? "#1A1A2E" : "#fff",
-                  color: customMinutes === m ? "#C9A84C" : "#5A5040",
-                  border: `2px solid ${customMinutes === m ? "#C9A84C" : "#D0C8B0"}`,
-                  borderRadius: 8, padding: "6px 16px", fontSize: 13,
-                  fontFamily: "sans-serif", cursor: "pointer", fontWeight: customMinutes === m ? "700" : "400",
-                }}>{m} min</button>
-              ))}
-            </div>
-
-            {/* Circle timer */}
-            <div style={{ position: "relative", marginBottom: 28 }}>
-              <svg width={200} height={200} viewBox="0 0 200 200">
-                <circle cx={100} cy={100} r={80} fill="none" stroke="#E8E0D0" strokeWidth={8} />
-                <circle cx={100} cy={100} r={80} fill="none"
-                  stroke={isBreak ? "#28A745" : running ? "#E74C3C" : "#C9A84C"}
-                  strokeWidth={10} strokeLinecap="round"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={circumference * (1 - progress)}
-                  transform="rotate(-90 100 100)"
-                  style={{ transition: "stroke-dashoffset 1s linear, stroke 0.3s" }}
-                />
-                <text x={100} y={90} textAnchor="middle" fill="#1A1A2E" fontSize={36} fontFamily="Georgia, serif" fontWeight="bold">
-                  {mins}:{secs}
-                </text>
-                <text x={100} y={118} textAnchor="middle" fill="#9A9080" fontSize={12} fontFamily="sans-serif">
-                  {isBreak ? "☕ Pause" : running ? "🔥 Focus" : "⏸ Prêt"}
-                </text>
-                {sessions > 0 && (
-                  <text x={100} y={140} textAnchor="middle" fill="#C9A84C" fontSize={11} fontFamily="sans-serif">
-                    {"🍅".repeat(Math.min(sessions, 8))}
-                  </text>
-                )}
-              </svg>
-            </div>
-
-            {/* Controls */}
-            <div style={{ display: "flex", gap: 12, marginBottom: 32 }}>
-              <button onClick={() => setRunning(r => !r)} style={{
-                background: running ? "#E74C3C" : "#1A1A2E",
-                color: running ? "#fff" : "#C9A84C",
-                border: "none", borderRadius: 10, padding: "14px 36px",
-                fontSize: 15, fontFamily: "sans-serif", fontWeight: "700",
-                cursor: "pointer", letterSpacing: 1,
-              }}>
-                {running ? "⏸ Pause" : "▶ Démarrer"}
-              </button>
-              <button onClick={resetTimer} style={{
-                background: "#F7F5F0", color: "#5A5040",
-                border: "2px solid #D0C8B0", borderRadius: 10, padding: "14px 20px",
-                fontSize: 15, fontFamily: "sans-serif", cursor: "pointer",
-              }}>↺</button>
-            </div>
-
-            {/* Mark done */}
-            {focusTask && (
-              <button onClick={() => {
-                updateStatus(focusTask.id, "Terminé");
-                setFocusTask(null);
-                resetTimer();
-                setTab("capture");
-              }} style={{
-                background: "#D4EDDA", color: "#155724",
-                border: "2px solid #28A745", borderRadius: 10,
-                padding: "12px 28px", fontSize: 13,
-                fontFamily: "sans-serif", fontWeight: "700",
-                cursor: "pointer",
-              }}>
-                ✅ Marquer comme terminé
-              </button>
-            )}
-
-            {/* Sessions info */}
-            <p style={{ marginTop: 24, fontSize: 12, color: "#B0A898", fontFamily: "sans-serif", textAlign: "center" }}>
-              {sessions} session{sessions > 1 ? "s" : ""} complétée{sessions > 1 ? "s" : ""} · Pause de 5 min après chaque session
-            </p>
-          </div>
-        )}
+        <div hidden={tab !== "focus"}>
+          <FocusIntervals
+            task={focusTask}
+            onIntervalEnd={addFocusToHistory}
+            onUnlink={() => setFocusTaskId(null)}
+            onComplete={id => {
+              updateStatus(id, "Terminé");
+              setFocusTaskId(null);
+              setTab("capture");
+            }}
+          />
+        </div>
       </div>
     </div>
   );
