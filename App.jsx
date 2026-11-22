@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import FocusIntervals, { mmss } from "./FocusIntervals.jsx";
+import { VoiceRecorder, VoicePlayer, deleteRecording } from "./VoiceRecorder.jsx";
 
 const CONTEXTS = ["📥 Inbox", "🏠 Maison", "💼 Travail BTP", "📞 Appels", "🛒 Courses", "🌴 Guadeloupe", "📚 Lecture"];
 const STATUSES = ["À traiter", "En cours", "Délégué", "Terminé"];
@@ -38,10 +39,10 @@ export default function GTDApp() {
     setTab("focus");
   };
 
-  const addTask = () => {
+  const addTask = (voiceId = null) => {
     const trimmed = input.trim();
-    if (!trimmed) return;
-    setTasks(prev => [{ id: Date.now(), text: trimmed, context, status: "À traiter", createdAt: new Date().toLocaleDateString("fr-FR"), note: "" }, ...prev]);
+    if (!trimmed && !voiceId) return;
+    setTasks(prev => [{ id: Date.now(), text: trimmed || "Mémo vocal", context, history: voiceId ? [{ at: new Date().toISOString(), kind: "voice", text: "Mémo vocal", voiceId }] : [], status: "À traiter", createdAt: new Date().toLocaleDateString("fr-FR"), note: "" }, ...prev]);
     setInput("");
     inputRef.current?.focus();
   };
@@ -82,7 +83,16 @@ export default function GTDApp() {
       : task));
     event.currentTarget.reset();
   };
-  const deleteTask = (id) => setTasks(prev => prev.filter(t => t.id !== id));
+  const deleteTask = (id) => {
+    const task = tasks.find(t => t.id === id);
+    setTasks(prev => prev.filter(t => t.id !== id));
+    task?.history?.filter(entry => entry.voiceId).forEach(entry => deleteRecording(entry.voiceId).catch(() => {}));
+  };
+  const addVoiceFollowUp = (id, voiceId) => {
+    setTasks(prev => prev.map(task => task.id === id
+      ? { ...task, history: [...(task.history ?? []), { at: new Date().toISOString(), kind: "voice", text: "Mémo vocal", voiceId }] }
+      : task));
+  };
   const saveEdit = (id) => {
     const at = new Date().toISOString();
     setTasks(prev => prev.map(task => {
@@ -173,8 +183,9 @@ export default function GTDApp() {
                 <select value={context} onChange={e => setContext(e.target.value)} style={{ border: "1px solid #D0C8B0", borderRadius: 6, padding: "5px 8px", fontSize: 12, background: "#F7F5F0", color: "#1A1A2E", fontFamily: "sans-serif", cursor: "pointer" }}>
                   {CONTEXTS.map(c => <option key={c}>{c}</option>)}
                 </select>
-                <button onClick={addTask} style={{ background: "#1A1A2E", color: "#C9A84C", border: "none", borderRadius: 6, padding: "7px 18px", fontSize: 12, fontFamily: "sans-serif", fontWeight: "700", cursor: "pointer" }}>+ Ajouter</button>
+                <button onClick={() => addTask()} style={{ background: "#1A1A2E", color: "#C9A84C", border: "none", borderRadius: 6, padding: "7px 18px", fontSize: 12, fontFamily: "sans-serif", fontWeight: "700", cursor: "pointer" }}>+ Ajouter</button>
                 <span style={{ fontSize: 11, color: "#B0A898", fontFamily: "sans-serif" }}>ou Entrée</span>
+                <VoiceRecorder onSave={voiceId => addTask(voiceId)} />
               </div>
             </div>
 
@@ -228,9 +239,10 @@ export default function GTDApp() {
                                 dateStyle: "short",
                                 timeStyle: "short",
                               })}</time>
-                              <strong>{ { status: "Statut", edit: "Modification", note: "Note", focus: "Focus" }[entry.kind] }</strong>
+                              <strong>{ { status: "Statut", edit: "Modification", note: "Note", focus: "Focus", voice: "Vocal" }[entry.kind] }</strong>
                               {entry.kind === "edit" && <div>Avant · {entry.previous}</div>}
                               <div>{entry.text}</div>
+                              {entry.voiceId && <VoicePlayer id={entry.voiceId} />}
                               {entry.details?.map((detail, index) => <div key={index}>{detail}</div>)}
                             </li>
                           ))}
@@ -242,6 +254,7 @@ export default function GTDApp() {
                           </label>
                           <button type="submit">Ajouter au suivi</button>
                         </form>
+                        <VoiceRecorder onSave={voiceId => addVoiceFollowUp(task.id, voiceId)} />
                       </details>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

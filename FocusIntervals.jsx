@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const STORAGE_KEY = "fractionne-focus-v1";
 const MAX_MINUTES = 90;
@@ -33,6 +33,31 @@ export default function FocusIntervals({ task, onUnlink, onComplete, onIntervalE
   const [title, setTitle] = useState("");
   const [urges, setUrges] = useState([]);
   const [saveError, setSaveError] = useState(false);
+  const [notice, setNotice] = useState("");
+  const audioRef = useRef(null);
+  const finishingRef = useRef(false);
+
+  useEffect(() => () => { audioRef.current?.close().catch(() => {}); }, []);
+
+  function signalEnd() {
+    if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 500]);
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.resume().then(() => {
+      [0, 0.32, 0.64].forEach(offset => {
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, audio.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.18, audio.currentTime + offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + offset + 0.23);
+        oscillator.connect(gain).connect(audio.destination);
+        oscillator.start(audio.currentTime + offset);
+        oscillator.stop(audio.currentTime + offset + 0.24);
+      });
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     try {
@@ -44,6 +69,8 @@ export default function FocusIntervals({ task, onUnlink, onComplete, onIntervalE
   }, [intervals]);
 
   function finish(elapsed) {
+    if (!active || finishingRef.current) return;
+    finishingRef.current = true;
     const targetSeconds = active.target * 60;
     const record = {
       ...active,
@@ -52,6 +79,8 @@ export default function FocusIntervals({ task, onUnlink, onComplete, onIntervalE
       urges: urges.map(urge => urge.second),
       notes: urges.map(urge => urge.note.trim()),
     };
+    if (record.held) { signalEnd(); setNotice("⏰ Intervalle terminé !"); }
+    else setNotice("Intervalle arrêté.");
     const next = [...intervals, record];
     onIntervalEnd(record);
     setActive(null);
@@ -78,6 +107,16 @@ export default function FocusIntervals({ task, onUnlink, onComplete, onIntervalE
   function start(event) {
     event.preventDefault();
     const target = Number(duration);
+    if (!Number.isInteger(target) || target < 1 || target > MAX_MINUTES) return;
+    finishingRef.current = false;
+    setNotice("");
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) {
+        audioRef.current ??= new AudioContext();
+        audioRef.current.resume().catch(() => {});
+      }
+    } catch { /* Le minuteur reste utilisable sans son. */ }
     setActive({ ts: Date.now(), target, task: task?.text ?? title.trim(), taskId: task?.id });
     setSeconds(target * 60);
     setUrges([]);
@@ -147,6 +186,7 @@ export default function FocusIntervals({ task, onUnlink, onComplete, onIntervalE
         </form>
       )}
 
+      {notice && <p role="status" className="focus-end-notice">{notice}</p>}
       {saveError && <p role="status">Le navigateur n’a pas pu enregistrer l’historique du focus.</p>}
       <div className="focus-card focus-stats">
         <div><strong>{intervals.length}</strong>intervalles</div>
