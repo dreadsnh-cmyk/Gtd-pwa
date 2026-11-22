@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import FocusIntervals, { mmss } from "./FocusIntervals.jsx";
 import { VoiceRecorder, VoicePlayer, deleteRecording } from "./VoiceRecorder.jsx";
 
-const CONTEXTS = ["📥 Inbox", "🏠 Maison", "💼 Travail BTP", "📞 Appels", "🛒 Courses", "🌴 Guadeloupe", "📚 Lecture"];
+const CONTEXTS = ["📥 Inbox", "🏠 Maison", "💼 Travail BTP", "🔒 Vie privée", "📞 Appels", "🛒 Courses", "🌴 Guadeloupe", "📚 Lecture"];
 const STATUSES = ["À traiter", "En cours", "Délégué", "Terminé"];
 const STATUS_COLORS = {
   "À traiter": { bg: "#FFF3CD", text: "#856404", dot: "#FFC107" },
