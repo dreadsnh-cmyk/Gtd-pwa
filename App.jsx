@@ -3,6 +3,7 @@ import FocusIntervals, { mmss } from "./FocusIntervals.jsx";
 import { VoiceRecorder, VoicePlayer, deleteRecording } from "./VoiceRecorder.jsx";
 
 const CONTEXTS = ["📥 Inbox", "🏠 Maison", "💼 Travail BTP", "🔒 Vie privée", "📞 Appels", "🛒 Courses", "🌴 Guadeloupe", "📚 Lecture"];
+const PRIVATE_CONTEXT = "🔒 Vie privée";
 const STATUSES = ["À traiter", "En cours", "Délégué", "Terminé"];
 const STATUS_COLORS = {
   "À traiter": { bg: "#FFF3CD", text: "#856404", dot: "#FFC107" },
@@ -42,7 +43,7 @@ export default function GTDApp() {
   const addTask = (voiceId = null) => {
     const trimmed = input.trim();
     if (!trimmed && !voiceId) return;
-    setTasks(prev => [{ id: Date.now(), text: trimmed || "Mémo vocal", context, history: voiceId ? [{ at: new Date().toISOString(), kind: "voice", text: "Mémo vocal", voiceId }] : [], status: "À traiter", createdAt: new Date().toLocaleDateString("fr-FR"), note: "" }, ...prev]);
+    setTasks(prev => [{ id: Date.now(), text: trimmed || "Mémo vocal", context: tab === "private" ? PRIVATE_CONTEXT : context, history: voiceId ? [{ at: new Date().toISOString(), kind: "voice", text: "Mémo vocal", voiceId }] : [], status: "À traiter", createdAt: new Date().toLocaleDateString("fr-FR"), note: "" }, ...prev]);
     setInput("");
     inputRef.current?.focus();
   };
@@ -106,14 +107,15 @@ export default function GTDApp() {
     setEditId(null);
   };
 
-  const filtered = tasks.filter(t => {
+  const visibleTasks = tasks.filter(t => tab === "private" ? t.context === PRIVATE_CONTEXT : t.context !== PRIVATE_CONTEXT);
+  const filtered = visibleTasks.filter(t => {
     const matchStatus = filter === "Tous" || t.status === filter;
     const matchCtx = filterCtx === "Tous" || t.context === filterCtx;
     const matchSearch = t.text.toLowerCase().includes(search.toLowerCase());
     return matchStatus && matchCtx && matchSearch;
   });
 
-  const counts = STATUSES.reduce((acc, s) => { acc[s] = tasks.filter(t => t.status === s).length; return acc; }, {});
+  const counts = STATUSES.reduce((acc, s) => { acc[s] = visibleTasks.filter(t => t.status === s).length; return acc; }, {});
 
   return (
     <div style={{ minHeight: "100vh", background: "#F7F5F0", fontFamily: "'Georgia', serif", padding: 0 }}>
@@ -129,13 +131,14 @@ export default function GTDApp() {
           <div style={{ display: "flex", gap: 0 }}>
             {[
               { key: "capture", label: "📥 Capture & Suivi" },
+              { key: "private", label: "🔒 Vie privée" },
               { key: "focus", label: "🔥 Mode Focus" },
             ].map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)} style={{
+              <button key={t.key} onClick={() => { setTab(t.key); setFilter("Tous"); setFilterCtx("Tous"); setSearch(""); }} style={{
                 background: tab === t.key ? "#F7F5F0" : "transparent",
                 color: tab === t.key ? "#1A1A2E" : "#9A9080",
                 border: "none", borderRadius: "8px 8px 0 0",
-                padding: "10px 20px", fontSize: 13,
+                padding: "10px 12px", fontSize: 12,
                 fontFamily: "sans-serif", fontWeight: tab === t.key ? "700" : "400",
                 cursor: "pointer", transition: "all 0.2s",
               }}>{t.label}</button>
@@ -147,7 +150,7 @@ export default function GTDApp() {
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 20px" }}>
 
         {/* ===== CAPTURE TAB ===== */}
-        {tab === "capture" && (
+        {(tab === "capture" || tab === "private") && (
           <>
             {/* Stats */}
             <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
@@ -168,21 +171,21 @@ export default function GTDApp() {
                 fontSize: 12, fontFamily: "sans-serif", cursor: "pointer",
                 border: filter === "Tous" ? "2px solid #C9A84C" : "2px solid transparent",
                 fontWeight: filter === "Tous" ? "700" : "400",
-              }}>Tout · <strong>{tasks.length}</strong></div>
+              }}>Tout · <strong>{visibleTasks.length}</strong></div>
             </div>
 
             {/* Capture zone */}
             <div style={{ background: "#fff", border: "2px solid #1A1A2E", borderRadius: 12, padding: "18px", marginBottom: 20, boxShadow: "4px 4px 0 #C9A84C" }}>
-              <p style={{ margin: "0 0 10px", fontSize: 11, letterSpacing: 2, color: "#9A9080", fontFamily: "sans-serif", textTransform: "uppercase" }}>✏️ Capture rapide</p>
+              <p style={{ margin: "0 0 10px", fontSize: 11, letterSpacing: 2, color: "#9A9080", fontFamily: "sans-serif", textTransform: "uppercase" }}>{tab === "private" ? "🔒 Capture personnelle" : "✏️ Capture rapide"}</p>
               <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addTask(); } }}
-                placeholder="Qu'est-ce qui occupe ton esprit en ce moment ?" rows={2}
+                placeholder={tab === "private" ? "Qu’aimerais-tu garder en tête pour ta vie privée ?" : "Qu'est-ce qui occupe ton esprit en ce moment ?"} rows={2}
                 style={{ width: "100%", border: "none", outline: "none", fontSize: 15, fontFamily: "Georgia, serif", color: "#1A1A2E", resize: "none", background: "transparent", lineHeight: 1.6, boxSizing: "border-box" }}
               />
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                <select value={context} onChange={e => setContext(e.target.value)} style={{ border: "1px solid #D0C8B0", borderRadius: 6, padding: "5px 8px", fontSize: 12, background: "#F7F5F0", color: "#1A1A2E", fontFamily: "sans-serif", cursor: "pointer" }}>
-                  {CONTEXTS.map(c => <option key={c}>{c}</option>)}
-                </select>
+                {tab === "private" ? <span style={{ fontSize: 12, fontFamily: "sans-serif" }}>🔒 Vie privée</span> : <select value={context} onChange={e => setContext(e.target.value)} style={{ border: "1px solid #D0C8B0", borderRadius: 6, padding: "5px 8px", fontSize: 12, background: "#F7F5F0", color: "#1A1A2E", fontFamily: "sans-serif", cursor: "pointer" }}>
+                  {CONTEXTS.filter(c => c !== PRIVATE_CONTEXT).map(c => <option key={c}>{c}</option>)}
+                </select>}
                 <button onClick={() => addTask()} style={{ background: "#1A1A2E", color: "#C9A84C", border: "none", borderRadius: 6, padding: "7px 18px", fontSize: 12, fontFamily: "sans-serif", fontWeight: "700", cursor: "pointer" }}>+ Ajouter</button>
                 <span style={{ fontSize: 11, color: "#B0A898", fontFamily: "sans-serif" }}>ou Entrée</span>
                 <VoiceRecorder onSave={voiceId => addTask(voiceId)} />
@@ -193,17 +196,17 @@ export default function GTDApp() {
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher..."
                 style={{ border: "1px solid #D0C8B0", borderRadius: 6, padding: "6px 10px", fontSize: 12, fontFamily: "sans-serif", background: "#fff", color: "#1A1A2E", outline: "none", flex: 1, minWidth: 140 }} />
-              <select value={filterCtx} onChange={e => setFilterCtx(e.target.value)}
+              {tab !== "private" && <select value={filterCtx} onChange={e => setFilterCtx(e.target.value)}
                 style={{ border: "1px solid #D0C8B0", borderRadius: 6, padding: "6px 8px", fontSize: 12, background: "#fff", color: "#1A1A2E", fontFamily: "sans-serif", cursor: "pointer" }}>
                 <option value="Tous">Tous contextes</option>
-                {CONTEXTS.map(c => <option key={c}>{c}</option>)}
-              </select>
+                {CONTEXTS.filter(c => c !== PRIVATE_CONTEXT).map(c => <option key={c}>{c}</option>)}
+              </select>}
             </div>
 
             {/* Task list */}
             {filtered.length === 0 && (
               <div style={{ textAlign: "center", padding: "40px 0", color: "#B0A898", fontFamily: "sans-serif", fontSize: 13 }}>
-                {tasks.length === 0 ? "Commence par capturer ce qui te pèse sur l'esprit..." : "Aucune tâche dans ce filtre."}
+                {visibleTasks.length === 0 ? "Commence par capturer ce qui te pèse sur l'esprit..." : "Aucune tâche dans ce filtre."}
               </div>
             )}
 
@@ -276,9 +279,9 @@ export default function GTDApp() {
               })}
             </div>
 
-            {tasks.length > 0 && (
+            {visibleTasks.length > 0 && (
               <div style={{ marginTop: 20, textAlign: "center", fontSize: 11, color: "#C0B8A8", fontFamily: "sans-serif" }}>
-                {tasks.filter(t => t.status === "Terminé").length} terminée(s) sur {tasks.length}
+                {visibleTasks.filter(t => t.status === "Terminé").length} terminée(s) sur {visibleTasks.length}
               </div>
             )}
           </>
@@ -308,3 +311,4 @@ function btnStyle(color) {
     display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
   };
 }
+
